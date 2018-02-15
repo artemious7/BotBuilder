@@ -1,9 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Microsoft.Bot.Connector
 {
@@ -20,6 +24,10 @@ namespace Microsoft.Bot.Connector
         IContactRelationUpdateActivity,
         IInstallationUpdateActivity,
         IMessageActivity,
+        IMessageUpdateActivity,
+        IMessageDeleteActivity,
+        IMessageReactionActivity,
+        ISuggestionActivity,
         ITypingActivity,
         IEndOfConversationActivity,
         IEventActivity,
@@ -29,6 +37,16 @@ namespace Microsoft.Bot.Connector
         /// Content-type for an Activity
         /// </summary>
         public const string ContentType = "application/vnd.microsoft.activity";
+
+        partial void CustomInit()
+        {
+            MembersAdded = MembersAdded ?? new List<ChannelAccount>();
+            MembersRemoved = MembersRemoved ?? new List<ChannelAccount>();
+            Attachments = Attachments ?? new List<Attachment>();
+            Entities = Entities ?? new List<Entity>();
+            ReactionsAdded = ReactionsAdded ?? new List<MessageReaction>();
+            ReactionsRemoved = ReactionsRemoved ?? new List<MessageReaction>();
+        }
 
         /// <summary>
         /// Take a message and create a reply message for it with the routing information 
@@ -58,7 +76,6 @@ namespace Microsoft.Bot.Connector
         /// </summary>
         [JsonExtensionData(ReadData = true, WriteData = true)]
         public JObject Properties { get; set; } = new JObject();
-
 
         /// <summary>
         /// Create an instance of the Activity class with IMessageActivity masking
@@ -146,7 +163,31 @@ namespace Microsoft.Bot.Connector
         public IInvokeActivity AsInvokeActivity() { return IsActivity(ActivityTypes.Invoke) ? this : null; }
 
         /// <summary>
-        /// Maps type to activity types 
+        /// Return an IMessageUpdateAcitvity if this is a MessageUpdate activity
+        /// </summary>
+        /// <returns></returns>
+        public IMessageUpdateActivity AsMessageUpdateActivity() { return IsActivity(ActivityTypes.MessageUpdate) ? this : null; }
+
+        /// <summary>
+        /// Return an IMessageDeleteActivity if this is a MessageDelete activity
+        /// </summary>
+        /// <returns></returns>
+        public IMessageDeleteActivity AsMessageDeleteActivity() { return IsActivity(ActivityTypes.MessageDelete) ? this : null; }
+
+        /// <summary>
+        /// Return an IMessageReactionActivity if this is a MessageReaction activity
+        /// </summary>
+        /// <returns></returns>
+        public IMessageReactionActivity AsMessageReactionActivity() { return IsActivity(ActivityTypes.MessageReaction) ? this : null; }
+
+        /// <summary>
+        /// Return an ISuggestionActivity if this is a Suggestion activity
+        /// </summary>
+        /// <returns></returns>
+        public ISuggestionActivity AsSuggestionActivity() { return IsActivity(ActivityTypes.Suggestion) ? this : null; }
+
+        /// <summary>
+        /// Normalize activity type 
         /// </summary>
         /// <param name="type"> The type.</param>
         /// <returns> The activity type.</returns>
@@ -169,6 +210,30 @@ namespace Microsoft.Bot.Connector
 
             if (String.Equals(type, ActivityTypes.Ping, StringComparison.OrdinalIgnoreCase))
                 return ActivityTypes.Ping;
+
+            if (String.Equals(type, ActivityTypes.EndOfConversation, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.EndOfConversation;
+
+            if (String.Equals(type, ActivityTypes.Event, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.Event;
+
+            if (String.Equals(type, ActivityTypes.InstallationUpdate, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.InstallationUpdate;
+
+            if (String.Equals(type, ActivityTypes.Invoke, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.Invoke;
+
+            if (String.Equals(type, ActivityTypes.MessageDelete, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.MessageDelete;
+
+            if (String.Equals(type, ActivityTypes.MessageReaction, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.MessageReaction;
+
+            if (String.Equals(type, ActivityTypes.MessageUpdate, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.MessageUpdate;
+
+            if (String.Equals(type, ActivityTypes.Suggestion, StringComparison.OrdinalIgnoreCase))
+                return ActivityTypes.Suggestion;
 
             return $"{Char.ToLower(type[0])}{type.Substring(1)}";
         }
@@ -203,6 +268,49 @@ namespace Microsoft.Bot.Connector
             return this.Entities?.Where(entity => String.Compare(entity.Type, "mention", ignoreCase: true) == 0)
                 .Select(e => e.Properties.ToObject<Mention>()).ToArray() ?? new Mention[0];
         }
+
+        /// <summary>
+        /// Get channeldata as typed structure
+        /// </summary>
+        /// <param name="activity"></param>
+        /// <typeparam name="TypeT">type to use</typeparam>
+        /// <returns>typed object or default(TypeT)</returns>
+        public TypeT GetChannelData<TypeT>()
+        {
+            if (this.ChannelData == null)
+                return default(TypeT);
+            if (this.ChannelData.GetType() == typeof(TypeT))
+                return (TypeT)this.ChannelData;
+            return ((JObject)this.ChannelData).ToObject<TypeT>();
+        }
+
+        /// <summary>
+        /// Get channeldata as typed structure
+        /// </summary>
+        /// <param name="activity"></param>
+        /// <typeparam name="TypeT">type to use</typeparam>
+        /// <param name="instance">The resulting instance, if possible</param>
+        /// <returns>
+        /// <c>true</c> if value of <seealso cref="IActivity.ChannelData"/> was coerceable to <typeparamref name="TypeT"/>, <c>false</c> otherwise.
+        /// </returns>
+        public bool TryGetChannelData<TypeT>(out TypeT instance)
+        {
+            instance = default(TypeT);
+
+            try
+            {
+                if (this.ChannelData == null)
+                    return false;
+
+                instance = this.GetChannelData<TypeT>();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
     }
 
     public static class ActivityExtensions
